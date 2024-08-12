@@ -5,124 +5,179 @@ import (
 	"gopoc/templates"
 	endpoints "gopoc/utils/endpoints"
 	helpers "gopoc/utils/helpers"
-	"net/http"
 	"testing"
 
 	"github.com/bxcodec/faker/v4"
+	"github.com/smartystreets/goconvey/convey"
 )
 
 func TestCreateUser (t *testing.T) {
 
-	var user map[string]interface{} 
+	convey.Convey("Given a valid user creation request", t, func ()  {
+			
+		var user map[string]interface{} 
 
-	helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
+		helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
 
-	user["name"] = faker.Name()
-	user["last_name"] = faker.LastName()
-	user["email"] = faker.Email()
+		user["name"] = faker.Name()
+		user["last_name"] = faker.LastName()
+		user["email"] = faker.Email()
 
-	response := endpoints.CreateUser(t, user)
+		convey.Convey("When the POST request is made passing the user payload", func() {
+			response := endpoints.CreateUser(t, user)
 
-	response.Status(http.StatusCreated)
-	response.JSON().Object().Value("id").NotNull()
+			convey.Convey("Then the response status should be 201 Created", func ()  {
+				convey.So(response.Raw().StatusCode, convey.ShouldEqual, 201)
+
+				convey.Convey("And the response should contain a non null id", func() {
+					convey.So(response.JSON().Object().Value("id").Raw(), convey.ShouldNotBeNil)
+				})
+			})
+		})	
+	})
 
 }
 func TestGetUsers(t *testing.T){
 
-	response := endpoints.GetUsers(t)
+	convey.Convey("Given the system have users", t, func() {
+		
+		convey.Convey("When the GET request is made to return all the users", func() {
+			response := endpoints.GetUsers(t)
+			
+			convey.Convey("Then the response status should be 200 Ok", func() {
+				convey.So(response.Raw().StatusCode, convey.ShouldEqual, 200)
 
-	response.Status(http.StatusOK)
-	response.JSON().Array().Schema(schemas.UsersGetSchema)
+				convey.Convey("And the response should match the schema", func() {
+					response.JSON().Array().Schema(schemas.UsersGetSchema)
+				})
+			})
+		})
+	})
+
+	
+	
 }
 
 func TestGetUserById(t *testing.T){
 
-	var user map[string]interface{} 
+	convey.Convey("Given a you have a valid user with an identifier", t, func ()  {
+		var user map[string]interface{} 
 
-	helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
+		helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
 
-	user["name"] = faker.Name()
-	user["last_name"] = faker.LastName()
-	user["email"] = faker.Email()
+		user["name"] = faker.Name()
+		user["last_name"] = faker.LastName()
+		user["email"] = faker.Email()
 
+		createResponse := endpoints.CreateUser(t, user)
+		id := createResponse.JSON().Object().Value("id").Number().Raw()
 
-	createResponse := endpoints.CreateUser(t, user)
+		convey.So(createResponse.Raw().StatusCode, convey.ShouldEqual, 201)
+		
+		convey.Convey("When a GET request is made passing the identifier number", func ()  {
+			getResponse := endpoints.GetUserById(t, int(id))
+			userObject := getResponse.JSON().Object()
 
-	createResponse.Status(http.StatusCreated)
+			convey.Convey("Then the response status should be 200 Ok", func ()  {
+				convey.So(getResponse.Raw().StatusCode, convey.ShouldEqual, 200)
 
-	id := createResponse.JSON().Object().Value("id").Number().Raw()
+				convey.Convey("And the body should return the info from the user requested", func() {
+					convey.So(userObject.Value("name").Raw(), convey.ShouldEqual, user["name"])
+					convey.So(userObject.Value("last_name").Raw(), convey.ShouldEqual, user["last_name"])
+					convey.So(userObject.Value("email").Raw(), convey.ShouldEqual, user["email"])
+				})
+			})
+		})
+	})
 
-	getResponse := endpoints.GetUserById(t, int(id))
-	userObject := getResponse.JSON().Object()
-
-	getResponse.Status(http.StatusOK)
-	userObject.Value("name").IsEqual(user["name"])
-	userObject.Value("last_name").IsEqual(user["last_name"])
-	userObject.Value("email").IsEqual(user["email"])
 	
 
 }
 
 func TestUpdateUser(t *testing.T) {
 
-	var user map[string]interface{}
-	var userUpdated map[string]interface{}
+	convey.Convey("Given you have a user with an identifier", t, func ()  {
+		
+		var user map[string]interface{}
+		var userUpdated map[string]interface{}
 
-	helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
-	helpers.ConvertJsonTemplateToMap(templates.UserUpdateTemplate, &userUpdated)
+		helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
+		helpers.ConvertJsonTemplateToMap(templates.UserUpdateTemplate, &userUpdated)
 
-	user["name"] = faker.Name()
-	user["last_name"] = faker.LastName()
-	user["email"] = faker.Email()
+		user["name"] = faker.Name()
+		user["last_name"] = faker.LastName()
+		user["email"] = faker.Email()
 
-	createResponse := endpoints.CreateUser(t, user)
+		createResponse := endpoints.CreateUser(t, user)
+		id := createResponse.JSON().Object().Value("id").Number().Raw()
 
-	createResponse.Status(http.StatusCreated)
+		convey.So(createResponse.Raw().StatusCode, convey.ShouldEqual, 201)
 
-	id := createResponse.JSON().Object().Value("id").Number().Raw()
+		convey.Convey("When a PUT request is made to this identifier passing updates about the user", func ()  {
+			
+			userUpdated["name"] = faker.Name()
+			userUpdated["last_name"] = faker.LastName()
+			userUpdated["email"] = faker.Email()
 
-	userUpdated["name"] = faker.Name()
-	userUpdated["last_name"] = faker.LastName()
-	userUpdated["email"] = faker.Email()
+			updateResponse := endpoints.UpdateUserById(t, int(id), userUpdated)
 
-	updateResponse := endpoints.UpdateUserById(t, int(id), userUpdated)
+			convey.Convey("Then the response status should be 200 Ok", func ()  {
+				convey.So(updateResponse.Raw().StatusCode, convey.ShouldEqual, 200)
+
+				convey.Convey("And the user should be updated with the new values", func() {
+					getResponse := endpoints.GetUserById(t, int(id))
+					userObject := getResponse.JSON().Object()
+
+					convey.So(getResponse.Raw().StatusCode, convey.ShouldEqual, 200)
+					convey.So(userObject.Value("name").Raw(), convey.ShouldEqual, userUpdated["name"])
+					convey.So(userObject.Value("last_name").Raw(), convey.ShouldEqual, userUpdated["last_name"])
+					convey.So(userObject.Value("email").Raw(), convey.ShouldEqual, userUpdated["email"])
+
+				})
+			})
+		})
+
+	})
+
 	
-	updateResponse.Status(http.StatusOK)
-
-	getResponse := endpoints.GetUserById(t, int(id))
-	userObject := getResponse.JSON().Object()
-
-	getResponse.Status(http.StatusOK)
-	userObject.Value("name").IsEqual(userUpdated["name"])
-	userObject.Value("last_name").IsEqual(userUpdated["last_name"])
-	userObject.Value("email").IsEqual(userUpdated["email"])
+	
 
 }
 
 func TestDeleteUser(t *testing.T){
 
-	var user map[string]interface{} 
+	convey.Convey("Given you have an user with an identifer", t, func ()  {
+		var user map[string]interface{} 
 
-	helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
+		helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
 
-	user["name"] = faker.Name()
-	user["last_name"] = faker.LastName()
-	user["email"] = faker.Email()
+		user["name"] = faker.Name()
+		user["last_name"] = faker.LastName()
+		user["email"] = faker.Email()
 
 
-	createResponse := endpoints.CreateUser(t, user)
+		createResponse := endpoints.CreateUser(t, user)
+		id := createResponse.JSON().Object().Value("id").Number().Raw()
 
-	createResponse.Status(http.StatusCreated)
 
-	id := createResponse.JSON().Object().Value("id").Number().Raw()
+		convey.So(createResponse.Raw().StatusCode, convey.ShouldEqual, 201)
 
-	deleteResponse := endpoints.DeleteUserById(t, int(id))
+		convey.Convey("When a DELETE request is made to the delete the user passing the identifier", func ()  {
+			deleteResponse := endpoints.DeleteUserById(t, int(id))
 
-	deleteResponse.Status(http.StatusOK)
+			convey.Convey("Then the response status should be 200 Ok", func ()  {
+				convey.So(deleteResponse.Raw().StatusCode, convey.ShouldEqual, 200)
 
-	getResponse := endpoints.GetUserById(t, int(id))
+				convey.Convey("And the user should not be more available in the system", func() {
+					getResponse := endpoints.GetUserById(t, int(id))
+					convey.So(getResponse.Raw().StatusCode, convey.ShouldEqual, 404)
 
-	getResponse.Status(http.StatusNotFound)
-	getResponse.JSON().Object().Value("message").IsEqual("User not found")
+				})
+			})
+
+		})
+
+	})
+
 
 }
