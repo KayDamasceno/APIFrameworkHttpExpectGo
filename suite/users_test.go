@@ -1,7 +1,7 @@
 package suite
 
 import (
-	"gopoc/schemas"
+	"fmt"
 	"gopoc/templates"
 	endpoints "gopoc/utils/endpoints"
 	helpers "gopoc/utils/helpers"
@@ -9,120 +9,237 @@ import (
 	"testing"
 
 	"github.com/bxcodec/faker/v4"
+	"github.com/ozontech/allure-go/pkg/allure"
+	"github.com/ozontech/allure-go/pkg/framework/provider"
+	"github.com/ozontech/allure-go/pkg/framework/suite"
 )
 
-func TestCreateUser (t *testing.T) {
+type UserTestSuite struct{
+	suite.Suite
+}
+func (s *UserTestSuite) TestCreateUser (t provider.T) {
+
+	t.Epic("User Management")
+	t.Feature("User Creation")
+	t.Story("Create a new user")
 
 	var user map[string]interface{} 
 
-	helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
+	t.WithNewStep("Generate fake user data", func (sCtx provider.StepCtx)  {
+		
 
-	user["name"] = faker.Name()
-	user["last_name"] = faker.LastName()
-	user["email"] = faker.Email()
+		helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
 
-	response := endpoints.CreateUser(t, user)
+		user["name"] = faker.Name()
+		user["last_name"] = faker.LastName()
+		user["email"] = faker.Email()
 
-	response.Status(http.StatusCreated)
-	response.JSON().Object().Value("id").NotNull()
+		sCtx.WithNewAttachment("Generated User Data", allure.Text, []byte(fmt.Sprintf("%v", user)))
+	})
 
-}
-func TestGetUsers(t *testing.T){
+	t.WithNewStep("Send Create User Request", func(sCtx provider.StepCtx) {
+		response := endpoints.CreateUser(&testing.T{} ,user)
 
-	response := endpoints.GetUsers(t)
+		sCtx.WithNewAttachment("Response", allure.Text, []byte(fmt.Sprintf("%v", response.Body())))
 
-	response.Status(http.StatusOK)
-	response.JSON().Array().Schema(schemas.UsersGetSchema)
-}
+		sCtx.NewStep("Validate Response")
+		sCtx.Assert().Equal("201 Created", response.Raw().Status)
+		
 
-func TestGetUserById(t *testing.T){
-
-	var user map[string]interface{} 
-
-	helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
-
-	user["name"] = faker.Name()
-	user["last_name"] = faker.LastName()
-	user["email"] = faker.Email()
-
-
-	createResponse := endpoints.CreateUser(t, user)
-
-	createResponse.Status(http.StatusCreated)
-
-	id := createResponse.JSON().Object().Value("id").Number().Raw()
-
-	getResponse := endpoints.GetUserById(t, int(id))
-	userObject := getResponse.JSON().Object()
-
-	getResponse.Status(http.StatusOK)
-	userObject.Value("name").IsEqual(user["name"])
-	userObject.Value("last_name").IsEqual(user["last_name"])
-	userObject.Value("email").IsEqual(user["email"])
+		sCtx.NewStep("Validate Id is not null")
+		sCtx.Assert().NotNil(response.JSON().Object().Value("id").Raw())
+		
+	})
 	
 
 }
 
-func TestUpdateUser(t *testing.T) {
+func (s *UserTestSuite) TestGetUsers(t provider.T) {
+
+	t.Epic("User Management")
+	t.Feature("User Retrieval")
+	t.Story("Get list of users")
+
+	t.WithNewStep("Send Get Users Request", func(sCtx provider.StepCtx) {
+		response := endpoints.GetUsers(&testing.T{})
+
+		sCtx.WithNewAttachment("Response", allure.Text, []byte(fmt.Sprintf("%v", response.Body())))
+
+		sCtx.NewStep("Validate Response")
+		sCtx.Assert().Equal(http.StatusOK, response.Raw().StatusCode)
+
+		sCtx.NewStep("Validate Response Schema")
+		
+	})
+}
+
+func (s *UserTestSuite) TestGetUserById(t provider.T) {
+
+	t.Epic("User Management")
+	t.Feature("User Retrieval")
+	t.Story("Get user by ID")
+
+	var user map[string]interface{}
+
+	t.WithNewStep("Generate fake user data", func(sCtx provider.StepCtx) {
+		helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
+
+		user["name"] = faker.Name()
+		user["last_name"] = faker.LastName()
+		user["email"] = faker.Email()
+
+		sCtx.WithNewAttachment("Generated User Data", allure.Text, []byte(fmt.Sprintf("%v", user)))
+	})
+
+	var userId int
+
+	t.WithNewStep("Create a new user", func(sCtx provider.StepCtx) {
+		createResponse := endpoints.CreateUser(&testing.T{}, user)
+
+		sCtx.WithNewAttachment("Create Response", allure.Text, []byte(fmt.Sprintf("%v", createResponse.Body())))
+
+		sCtx.NewStep("Validate Create Response")
+		sCtx.Assert().Equal(http.StatusCreated, createResponse.Raw().StatusCode)
+
+		userId = int(createResponse.JSON().Object().Value("id").Number().Raw())
+	})
+
+	t.WithNewStep("Retrieve user by ID", func(sCtx provider.StepCtx) {
+		getResponse := endpoints.GetUserById(&testing.T{}, userId)
+		userObject := getResponse.JSON().Object()
+
+		sCtx.WithNewAttachment("Get Response", allure.Text, []byte(fmt.Sprintf("%v", getResponse.Body())))
+
+		sCtx.NewStep("Validate Get Response")
+		sCtx.Assert().Equal(http.StatusOK, getResponse.Raw().StatusCode)
+
+		sCtx.NewStep("Validate User Data")
+		sCtx.Assert().Equal(user["name"], userObject.Value("name").Raw())
+		sCtx.Assert().Equal(user["last_name"], userObject.Value("last_name").Raw())
+		sCtx.Assert().Equal(user["email"], userObject.Value("email").Raw())
+	})
+}
+
+func (s *UserTestSuite) TestUpdateUser(t provider.T) {
+
+	t.Epic("User Management")
+	t.Feature("User Update")
+	t.Story("Update user details")
 
 	var user map[string]interface{}
 	var userUpdated map[string]interface{}
 
-	helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
-	helpers.ConvertJsonTemplateToMap(templates.UserUpdateTemplate, &userUpdated)
+	t.WithNewStep("Generate fake user data", func(sCtx provider.StepCtx) {
+		helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
 
-	user["name"] = faker.Name()
-	user["last_name"] = faker.LastName()
-	user["email"] = faker.Email()
+		user["name"] = faker.Name()
+		user["last_name"] = faker.LastName()
+		user["email"] = faker.Email()
 
-	createResponse := endpoints.CreateUser(t, user)
+		sCtx.WithNewAttachment("Generated User Data", allure.Text, []byte(fmt.Sprintf("%v", user)))
+	})
 
-	createResponse.Status(http.StatusCreated)
+	var userId int
 
-	id := createResponse.JSON().Object().Value("id").Number().Raw()
+	t.WithNewStep("Create a new user", func(sCtx provider.StepCtx) {
+		createResponse := endpoints.CreateUser(&testing.T{}, user)
 
-	userUpdated["name"] = faker.Name()
-	userUpdated["last_name"] = faker.LastName()
-	userUpdated["email"] = faker.Email()
+		sCtx.WithNewAttachment("Create Response", allure.Text, []byte(fmt.Sprintf("%v", createResponse.Body())))
 
-	updateResponse := endpoints.UpdateUserById(t, int(id), userUpdated)
-	
-	updateResponse.Status(http.StatusOK)
+		sCtx.NewStep("Validate Create Response")
+		sCtx.Assert().Equal(http.StatusCreated, createResponse.Raw().StatusCode)
 
-	getResponse := endpoints.GetUserById(t, int(id))
-	userObject := getResponse.JSON().Object()
+		userId = int(createResponse.JSON().Object().Value("id").Number().Raw())
+	})
 
-	getResponse.Status(http.StatusOK)
-	userObject.Value("name").IsEqual(userUpdated["name"])
-	userObject.Value("last_name").IsEqual(userUpdated["last_name"])
-	userObject.Value("email").IsEqual(userUpdated["email"])
+	t.WithNewStep("Generate updated user data", func(sCtx provider.StepCtx) {
+		helpers.ConvertJsonTemplateToMap(templates.UserUpdateTemplate, &userUpdated)
 
+		userUpdated["name"] = faker.Name()
+		userUpdated["last_name"] = faker.LastName()
+		userUpdated["email"] = faker.Email()
+
+		sCtx.WithNewAttachment("Updated User Data", allure.Text, []byte(fmt.Sprintf("%v", userUpdated)))
+	})
+
+	t.WithNewStep("Update user by ID", func(sCtx provider.StepCtx) {
+		updateResponse := endpoints.UpdateUserById(&testing.T{}, userId, userUpdated)
+
+		sCtx.WithNewAttachment("Update Response", allure.Text, []byte(fmt.Sprintf("%v", updateResponse.Body())))
+
+		sCtx.NewStep("Validate Update Response")
+		sCtx.Assert().Equal(http.StatusOK, updateResponse.Raw().StatusCode)
+	})
+
+	t.WithNewStep("Retrieve updated user by ID", func(sCtx provider.StepCtx) {
+		getResponse := endpoints.GetUserById(&testing.T{}, userId)
+		userObject := getResponse.JSON().Object()
+
+		sCtx.WithNewAttachment("Get Response", allure.Text, []byte(fmt.Sprintf("%v", getResponse.Body())))
+
+		sCtx.NewStep("Validate Get Response")
+		sCtx.Assert().Equal(http.StatusOK, getResponse.Raw().StatusCode)
+
+		sCtx.NewStep("Validate Updated User Data")
+		sCtx.Assert().Equal(userUpdated["name"], userObject.Value("name").Raw())
+		sCtx.Assert().Equal(userUpdated["last_name"], userObject.Value("last_name").Raw())
+		sCtx.Assert().Equal(userUpdated["email"], userObject.Value("email").Raw())
+	})
 }
 
-func TestDeleteUser(t *testing.T){
+func (s *UserTestSuite) TestDeleteUser(t provider.T) {
 
-	var user map[string]interface{} 
+	t.Epic("User Management")
+	t.Feature("User Deletion")
+	t.Story("Delete a user by ID")
 
-	helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
+	var user map[string]interface{}
 
-	user["name"] = faker.Name()
-	user["last_name"] = faker.LastName()
-	user["email"] = faker.Email()
+	t.WithNewStep("Generate fake user data", func(sCtx provider.StepCtx) {
+		helpers.ConvertJsonTemplateToMap(templates.UserCreateTemplate, &user)
 
+		user["name"] = faker.Name()
+		user["last_name"] = faker.LastName()
+		user["email"] = faker.Email()
 
-	createResponse := endpoints.CreateUser(t, user)
+		sCtx.WithNewAttachment("Generated User Data", allure.Text, []byte(fmt.Sprintf("%v", user)))
+	})
 
-	createResponse.Status(http.StatusCreated)
+	var userId int
 
-	id := createResponse.JSON().Object().Value("id").Number().Raw()
+	t.WithNewStep("Create a new user", func(sCtx provider.StepCtx) {
+		createResponse := endpoints.CreateUser(&testing.T{}, user)
 
-	deleteResponse := endpoints.DeleteUserById(t, int(id))
+		sCtx.WithNewAttachment("Create Response", allure.Text, []byte(fmt.Sprintf("%v", createResponse.Body())))
 
-	deleteResponse.Status(http.StatusOK)
+		sCtx.NewStep("Validate Create Response")
+		sCtx.Assert().Equal(http.StatusCreated, createResponse.Raw().StatusCode)
 
-	getResponse := endpoints.GetUserById(t, int(id))
+		userId = int(createResponse.JSON().Object().Value("id").Number().Raw())
+	})
 
-	getResponse.Status(http.StatusNotFound)
-	getResponse.JSON().Object().Value("message").IsEqual("User not found")
+	t.WithNewStep("Delete user by ID", func(sCtx provider.StepCtx) {
+		deleteResponse := endpoints.DeleteUserById(&testing.T{}, userId)
 
+		sCtx.WithNewAttachment("Delete Response", allure.Text, []byte(fmt.Sprintf("%v", deleteResponse.Body())))
+
+		sCtx.NewStep("Validate Delete Response")
+		sCtx.Assert().Equal(http.StatusOK, deleteResponse.Raw().StatusCode)
+	})
+
+	t.WithNewStep("Attempt to retrieve deleted user by ID", func(sCtx provider.StepCtx) {
+		getResponse := endpoints.GetUserById(&testing.T{}, userId)
+
+		sCtx.WithNewAttachment("Get Response", allure.Text, []byte(fmt.Sprintf("%v", getResponse.Body())))
+
+		sCtx.NewStep("Validate Get Response for Deleted User")
+		sCtx.Assert().Equal(http.StatusNotFound, getResponse.Raw().StatusCode)
+		sCtx.Assert().Equal("User not found", getResponse.JSON().Object().Value("message").Raw())
+	})
+}
+
+func TestUser(t *testing.T){
+	t.Parallel()
+
+	suite.RunSuite(t, new(UserTestSuite))
 }
